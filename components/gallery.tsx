@@ -13,10 +13,10 @@ import {
   DialogDescription,
 } from '@/components/ui/dialog'
 import { useAppStore } from '@/lib/store'
-import type { GeneratedAsset, AssetStyle } from '@/types'
+import type { GeneratedAsset, StyleConfig } from '@/types'
 
 interface GalleryProps {
-  styles: AssetStyle[]
+  styles: StyleConfig[]
 }
 
 export function Gallery({ styles }: GalleryProps) {

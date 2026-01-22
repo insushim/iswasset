@@ -15,9 +15,12 @@ export async function GET(request: Request): Promise<NextResponse> {
     })
   }
 
+  // Convert STYLE_CONFIGS object to array for frontend components
+  const stylesArray = Object.values(STYLE_CONFIGS)
+
   return NextResponse.json({
     categories: STYLE_CATEGORIES,
-    styles: STYLE_CONFIGS,
+    styles: stylesArray,
     allStyles: getAllStyles()
   })
 }

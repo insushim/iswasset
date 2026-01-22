@@ -15,10 +15,10 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { useAppStore } from '@/lib/store'
-import type { AssetStyle, GeneratedAsset } from '@/types'
+import type { StyleConfig, GeneratedAsset } from '@/types'
 
 interface GeneratorProps {
-  styles: AssetStyle[]
+  styles: StyleConfig[]
   selectedStyle: string
 }
 
@@ -140,7 +140,7 @@ export function Generator({ styles, selectedStyle }: GeneratorProps) {
           <CardDescription>
             {currentStyle ? (
               <>
-                <span className="font-medium text-foreground">{currentStyle.name}</span> 스타일로 생성합니다
+                <span className="font-medium text-foreground">{currentStyle.nameKo}</span> 스타일로 생성합니다
               </>
             ) : (
               '스타일을 선택하고 프롬프트를 입력하세요'

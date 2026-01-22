@@ -10,7 +10,7 @@ import {
   Gem, Heart, Zap, Target, Palette,
   Gamepad2, Box, Sparkles, Crown, Flame
 } from 'lucide-react'
-import type { AssetStyle, StyleCategory } from '@/types'
+import type { StyleConfig, StyleCategory } from '@/types'
 
 const iconMap: Record<string, React.ReactNode> = {
   icon: <Box className="h-5 w-5" />,
@@ -34,7 +34,7 @@ const iconMap: Record<string, React.ReactNode> = {
 }
 
 interface StyleSelectorProps {
-  styles: AssetStyle[]
+  styles: StyleConfig[]
   categories: StyleCategory[]
   selectedStyle: string
   onStyleSelect: (styleId: string) => void
@@ -93,8 +93,8 @@ export function StyleSelector({
                   {iconMap[style.id] || <Box className="h-5 w-5" />}
                 </div>
                 <div className="text-center">
-                  <p className="text-xs font-medium truncate max-w-full">{style.name}</p>
-                  <p className="text-[10px] text-muted-foreground truncate max-w-full">{style.nameEn}</p>
+                  <p className="text-xs font-medium truncate max-w-full">{style.nameKo}</p>
+                  <p className="text-[10px] text-muted-foreground truncate max-w-full">{style.name}</p>
                 </div>
                 {selectedStyle === style.id && (
                   <div className="absolute -top-1 -right-1 h-3 w-3 rounded-full bg-primary animate-pulse" />
@@ -102,8 +102,8 @@ export function StyleSelector({
               </button>
             </TooltipTrigger>
             <TooltipContent side="bottom" className="max-w-xs">
-              <p className="font-medium">{style.name}</p>
-              <p className="text-xs text-muted-foreground mt-1">{style.description}</p>
+              <p className="font-medium">{style.nameKo}</p>
+              <p className="text-xs text-muted-foreground mt-1">{style.descriptionKo || style.description}</p>
               <div className="flex flex-wrap gap-1 mt-2">
                 {style.tags.slice(0, 4).map(tag => (
                   <Badge key={tag} variant="secondary" className="text-[10px]">

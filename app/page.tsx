@@ -10,7 +10,7 @@ import { Gallery } from '@/components/gallery'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { useAppStore } from '@/lib/store'
-import type { AssetStyle, StyleCategory } from '@/types'
+import type { StyleConfig, StyleCategory } from '@/types'
 
 const features = [
   {
@@ -36,7 +36,7 @@ const features = [
 ]
 
 export default function HomePage() {
-  const [styles, setStyles] = useState<AssetStyle[]>([])
+  const [styles, setStyles] = useState<StyleConfig[]>([])
   const [categories, setCategories] = useState<StyleCategory[]>([])
   const { selectedStyle, setSelectedStyle } = useAppStore()
 
