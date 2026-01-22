@@ -16,7 +16,7 @@ Keep it concise (max 100 words), add artistic details, output in English only.
 Style: ${styleConfig.nameKo} (${styleConfig.promptPrefix})`
 
     const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash-preview-05-20',
+      model: 'gemini-3-flash-preview',
       contents: `Enhance: "${prompt}"`,
       config: {
         systemInstruction,

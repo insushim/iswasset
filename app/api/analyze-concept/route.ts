@@ -66,7 +66,7 @@ Include 8-20 assets covering:
 Be creative but practical. Focus on assets that would actually be needed for a playable game.`
 
     const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash-preview-05-20',
+      model: 'gemini-3-flash-preview',
       contents: `Analyze this game concept and create asset list:\n\n"${concept}"`,
       config: {
         systemInstruction,
