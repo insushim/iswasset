@@ -1,41 +1,63 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { GoogleGenerativeAI } from '@google/generative-ai'
+import { GoogleGenAI, Modality } from '@google/genai'
 import { getStyleConfig } from '@/lib/styles-config'
-import { generateId } from '@/lib/utils'
-import type { AssetStyleId, GenerateRequest, GenerateResponse } from '@/types'
+import type { AssetStyleId } from '@/types'
 
-// Internal type for API response assets (different from client-side GeneratedAsset)
-interface ApiGeneratedAsset {
-  id: string
-  imageData: string
-  prompt: string
-  enhancedPrompt?: string
-  style: string
-  size: string
-  timestamp: number
+// Initialize Google GenAI with Imagen 3
+const ai = new GoogleGenAI({ apiKey: process.env.GOOGLE_API_KEY || '' })
+
+// AI 프롬프트 강화 함수 - 간단한 한국어를 전문 프롬프트로 변환
+async function enhancePromptWithAI(userPrompt: string, styleConfig: { promptPrefix: string; nameKo: string }): Promise<string> {
+  try {
+    const model = ai.models.get('gemini-2.0-flash')
+
+    const systemInstruction = `You are an expert game artist prompt engineer. Transform simple Korean descriptions into detailed, professional image generation prompts.
+
+Rules:
+1. Keep the core concept from user input
+2. Add artistic details: lighting, composition, texture, color palette
+3. Add game art specific terms: game ready, clean edges, stylized, professional
+4. Output in English only
+5. Be concise but descriptive (max 150 words)
+6. Focus on visual elements, not story
+
+Style context: ${styleConfig.nameKo} (${styleConfig.promptPrefix})`
+
+    const response = await model.generateContent({
+      contents: `Transform this into a professional game art prompt: "${userPrompt}"`,
+      config: {
+        systemInstruction,
+        temperature: 0.7,
+        maxOutputTokens: 200,
+      }
+    })
+
+    return response.text?.trim() || userPrompt
+  } catch (error) {
+    console.error('Prompt enhancement failed:', error)
+    // Fallback: basic enhancement
+    return `${styleConfig.promptPrefix} ${userPrompt}, high quality, detailed, professional game art`
+  }
 }
 
-// Server-side only - API key is never exposed to client
-const genAI = new GoogleGenerativeAI(process.env.GOOGLE_API_KEY || '')
-
-export async function POST(request: NextRequest): Promise<NextResponse<GenerateResponse>> {
+export async function POST(request: NextRequest) {
   try {
-    // Validate API key exists
+    // Validate API key
     if (!process.env.GOOGLE_API_KEY) {
       return NextResponse.json({
         success: false,
-        error: 'API key not configured. Please set GOOGLE_API_KEY in environment variables.'
+        error: 'API key not configured'
       }, { status: 500 })
     }
 
-    const body: GenerateRequest = await request.json()
-    const { prompt, style, size = '1024', count = 1, negativePrompt, enhancePrompt = true } = body
+    const body = await request.json()
+    const { prompt, style, aspectRatio = '1:1', numberOfImages = 1 } = body
 
     // Validate required fields
     if (!prompt || !style) {
       return NextResponse.json({
         success: false,
-        error: 'Missing required fields: prompt and style are required'
+        error: 'prompt와 style은 필수입니다'
       }, { status: 400 })
     }
 
@@ -44,136 +66,68 @@ export async function POST(request: NextRequest): Promise<NextResponse<GenerateR
     if (!styleConfig) {
       return NextResponse.json({
         success: false,
-        error: `Invalid style: ${style}`
+        error: `잘못된 스타일: ${style}`
       }, { status: 400 })
     }
 
-    // Build enhanced prompt
-    let finalPrompt = prompt
-    if (enhancePrompt) {
-      finalPrompt = `${styleConfig.promptPrefix} ${prompt}`
+    // AI로 프롬프트 강화
+    const enhancedPrompt = await enhancePromptWithAI(prompt, styleConfig)
+    console.log('Original prompt:', prompt)
+    console.log('Enhanced prompt:', enhancedPrompt)
 
-      // Add quality boosters
-      finalPrompt += ', high quality, detailed, professional game art, masterpiece'
-
-      // Add negative prompt if provided
-      if (negativePrompt) {
-        finalPrompt += `. Avoid: ${negativePrompt}`
-      }
-    }
-
-    // Use Gemini 3 Flash for image generation
-    const model = genAI.getGenerativeModel({
-      model: 'gemini-3-flash-preview'
+    // Imagen 3 모델로 이미지 생성
+    const response = await ai.models.generateImages({
+      model: 'imagen-3.0-generate-002',
+      prompt: enhancedPrompt,
+      config: {
+        numberOfImages: Math.min(numberOfImages, 4),
+        aspectRatio: aspectRatio,
+        outputMimeType: 'image/png',
+      },
     })
 
-    const generatedAssets: ApiGeneratedAsset[] = []
+    // 생성된 이미지 추출
+    const images: string[] = []
 
-    // Generate images
-    for (let i = 0; i < Math.min(count, 4); i++) {
-      try {
-        const result = await model.generateContent({
-          contents: [{
-            role: 'user',
-            parts: [{ text: finalPrompt }]
-          }],
-          generationConfig: {
-            candidateCount: 1,
-          }
-        })
-
-        const response = result.response
-
-        // Check if image was generated
-        if (response.candidates && response.candidates[0]) {
-          const candidate = response.candidates[0]
-
-          // For Imagen, the response includes inline data
-          if (candidate.content && candidate.content.parts) {
-            for (const part of candidate.content.parts) {
-              if ('inlineData' in part && part.inlineData) {
-                const asset: ApiGeneratedAsset = {
-                  id: generateId(),
-                  imageData: `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`,
-                  prompt: prompt,
-                  enhancedPrompt: enhancePrompt ? finalPrompt : undefined,
-                  style: style,
-                  size: size,
-                  timestamp: Date.now(),
-                }
-                generatedAssets.push(asset)
-              }
-            }
-          }
+    if (response.generatedImages && response.generatedImages.length > 0) {
+      for (const img of response.generatedImages) {
+        if (img.image?.imageBytes) {
+          // base64 인코딩된 이미지 데이터
+          images.push(img.image.imageBytes)
         }
-      } catch (genError: unknown) {
-        console.error(`Generation ${i + 1} failed:`, genError)
-        // Continue with other generations
       }
     }
 
-    if (generatedAssets.length === 0) {
-      // Fallback: Try with Gemini Pro Vision for text-to-image description
-      try {
-        const geminiModel = genAI.getGenerativeModel({ model: 'gemini-1.5-pro' })
-
-        const descriptionResult = await geminiModel.generateContent({
-          contents: [{
-            role: 'user',
-            parts: [{
-              text: `You are a professional game artist. Describe in vivid detail how this game asset would look: "${finalPrompt}". Include colors, style, composition, and artistic details.`
-            }]
-          }]
-        })
-
-        const description = descriptionResult.response.text()
-
-        // Return description as a fallback
-        return NextResponse.json({
-          success: true,
-          assets: [{
-            id: generateId(),
-            imageData: '', // No actual image
-            prompt: prompt,
-            enhancedPrompt: description,
-            style: style,
-            size: size,
-            timestamp: Date.now(),
-          }],
-          error: 'Image generation not available. Returned detailed description instead.'
-        })
-      } catch {
-        return NextResponse.json({
-          success: false,
-          error: 'Failed to generate assets. Please try again with a different prompt.'
-        }, { status: 500 })
-      }
+    if (images.length === 0) {
+      return NextResponse.json({
+        success: false,
+        error: '이미지 생성에 실패했습니다. 다른 프롬프트로 시도해주세요.'
+      }, { status: 500 })
     }
 
     return NextResponse.json({
       success: true,
-      assets: generatedAssets,
+      images,
+      enhancedPrompt, // 클라이언트에 강화된 프롬프트도 전달
     })
 
   } catch (error: unknown) {
     console.error('Generate API Error:', error)
 
-    const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred'
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error'
 
     return NextResponse.json({
       success: false,
-      error: `Generation failed: ${errorMessage}`
+      error: `생성 실패: ${errorMessage}`
     }, { status: 500 })
   }
 }
 
-export async function GET(): Promise<NextResponse> {
+export async function GET() {
   return NextResponse.json({
     message: 'ISW Game Asset Generator API',
-    version: '1.0.0',
-    endpoints: {
-      'POST /api/generate': 'Generate game assets',
-      'GET /api/styles': 'Get available styles'
-    }
+    version: '2.0.0',
+    model: 'imagen-3.0-generate-002',
+    features: ['AI prompt enhancement', '18 game asset styles']
   })
 }
