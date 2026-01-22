@@ -1,12 +1,13 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { Sparkles, Zap, Shield, Palette, ArrowRight } from 'lucide-react'
+import { Sparkles, Zap, Shield, Palette, ArrowRight, Brain } from 'lucide-react'
 import { Header } from '@/components/header'
 import { Footer } from '@/components/footer'
 import { StyleSelector } from '@/components/style-selector'
 import { Generator } from '@/components/generator'
 import { Gallery } from '@/components/gallery'
+import { ConceptAnalyzer } from '@/components/concept-analyzer'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { useAppStore } from '@/lib/store'
@@ -86,14 +87,15 @@ export default function HomePage() {
 
               <div className="flex flex-col sm:flex-row gap-4 justify-center">
                 <Button size="lg" variant="gradient" className="h-12 px-8" asChild>
-                  <a href="#generator">
-                    지금 시작하기
-                    <ArrowRight className="ml-2 h-4 w-4" />
+                  <a href="#concept">
+                    <Brain className="mr-2 h-4 w-4" />
+                    컨셉으로 자동 생성
                   </a>
                 </Button>
                 <Button size="lg" variant="outline" className="h-12 px-8" asChild>
-                  <a href="#styles">
-                    스타일 둘러보기
+                  <a href="#generator">
+                    개별 에셋 생성
+                    <ArrowRight className="ml-2 h-4 w-4" />
                   </a>
                 </Button>
               </div>
@@ -145,15 +147,37 @@ export default function HomePage() {
           </div>
         </section>
 
+        {/* Concept Analyzer Section */}
+        <section id="concept" className="py-16 border-b border-border/40 bg-gradient-to-b from-violet-500/5 to-transparent">
+          <div className="container mx-auto px-4">
+            <div className="text-center mb-10">
+              <Badge variant="secondary" className="mb-4">
+                <Brain className="h-3 w-3 mr-1" />
+                AI 자동 분석
+              </Badge>
+              <h2 className="text-3xl font-bold mb-3">
+                게임 컨셉 <span className="gradient-text">자동 분석</span>
+              </h2>
+              <p className="text-muted-foreground max-w-2xl mx-auto">
+                게임 컨셉만 입력하면 AI가 필요한 모든 에셋을 자동으로 분석하고 한 번에 생성합니다.
+              </p>
+            </div>
+
+            <div className="max-w-4xl mx-auto">
+              <ConceptAnalyzer />
+            </div>
+          </div>
+        </section>
+
         {/* Generator Section */}
         <section id="generator" className="py-16 border-b border-border/40 bg-muted/30">
           <div className="container mx-auto px-4">
             <div className="text-center mb-10">
               <h2 className="text-3xl font-bold mb-3">
-                에셋 <span className="gradient-text">생성하기</span>
+                개별 에셋 <span className="gradient-text">생성하기</span>
               </h2>
               <p className="text-muted-foreground max-w-2xl mx-auto">
-                프롬프트를 입력하고 AI가 게임 에셋을 생성하는 것을 확인하세요.
+                특정 에셋만 추가로 생성하고 싶다면 직접 프롬프트를 입력하세요.
               </p>
             </div>
 

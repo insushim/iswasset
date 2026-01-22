@@ -105,6 +105,12 @@ export interface AppState {
   selectedStyle: string
   prompt: string
   error: string | null
+  // 게임 컨셉 관련
+  gameConcept: string
+  analyzedAssets: AnalyzedAsset[]
+  isAnalyzing: boolean
+  isBatchGenerating: boolean
+  batchProgress: BatchProgress | null
   setGenerating: (isGenerating: boolean) => void
   setIsGenerating: (isGenerating: boolean) => void
   addGeneratedAsset: (asset: GeneratedAsset) => void
@@ -113,4 +119,46 @@ export interface AppState {
   setSelectedStyle: (styleId: string) => void
   setPrompt: (prompt: string) => void
   setError: (error: string | null) => void
+  // 게임 컨셉 관련
+  setGameConcept: (concept: string) => void
+  setAnalyzedAssets: (assets: AnalyzedAsset[]) => void
+  addAnalyzedAsset: (asset: AnalyzedAsset) => void
+  removeAnalyzedAsset: (id: string) => void
+  updateAnalyzedAsset: (id: string, updates: Partial<AnalyzedAsset>) => void
+  setIsAnalyzing: (isAnalyzing: boolean) => void
+  setIsBatchGenerating: (isBatchGenerating: boolean) => void
+  setBatchProgress: (progress: BatchProgress | null) => void
+  clearAnalyzedAssets: () => void
+}
+
+// 게임 컨셉 분석 결과
+export interface AnalyzedAsset {
+  id: string
+  name: string
+  nameKo: string
+  description: string
+  style: AssetStyleId
+  prompt: string
+  enhancedPrompt?: string
+  priority: 'essential' | 'recommended' | 'optional'
+  category: string
+  status: 'pending' | 'generating' | 'completed' | 'failed'
+  imageUrl?: string
+  aspectRatio: AspectRatio
+}
+
+export interface GameConceptAnalysis {
+  gameName: string
+  genre: string
+  artStyle: string
+  assets: AnalyzedAsset[]
+  totalCount: number
+  estimatedTime: string
+}
+
+export interface BatchProgress {
+  total: number
+  completed: number
+  failed: number
+  current: string
 }
