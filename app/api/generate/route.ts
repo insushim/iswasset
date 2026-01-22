@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { GoogleGenAI, Modality } from '@google/genai'
+import { GoogleGenAI } from '@google/genai'
 import { getStyleConfig } from '@/lib/styles-config'
 import type { AssetStyleId } from '@/types'
 
@@ -9,8 +9,6 @@ const ai = new GoogleGenAI({ apiKey: process.env.GOOGLE_API_KEY || '' })
 // AI 프롬프트 강화 함수 - 간단한 한국어를 전문 프롬프트로 변환
 async function enhancePromptWithAI(userPrompt: string, styleConfig: { promptPrefix: string; nameKo: string }): Promise<string> {
   try {
-    const model = ai.models.get('gemini-2.0-flash')
-
     const systemInstruction = `You are an expert game artist prompt engineer. Transform simple Korean descriptions into detailed, professional image generation prompts.
 
 Rules:
@@ -23,7 +21,8 @@ Rules:
 
 Style context: ${styleConfig.nameKo} (${styleConfig.promptPrefix})`
 
-    const response = await model.generateContent({
+    const response = await ai.models.generateContent({
+      model: 'gemini-2.0-flash',
       contents: `Transform this into a professional game art prompt: "${userPrompt}"`,
       config: {
         systemInstruction,
