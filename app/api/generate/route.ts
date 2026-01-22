@@ -62,9 +62,9 @@ export async function POST(request: NextRequest): Promise<NextResponse<GenerateR
       }
     }
 
-    // Use Imagen 3 for image generation
+    // Use Gemini Flash for image generation
     const model = genAI.getGenerativeModel({
-      model: 'imagen-3.0-generate-002'
+      model: 'gemini-2.0-flash-preview-image-generation'
     })
 
     const generatedAssets: ApiGeneratedAsset[] = []

@@ -74,3 +74,5 @@ secrets/
 *.key
 *.pem
 config.local.json
+
+.vercel
