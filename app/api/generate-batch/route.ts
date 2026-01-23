@@ -43,9 +43,9 @@ async function generateSingleAsset(asset: AnalyzedAsset): Promise<{
     // 프롬프트 강화
     const enhancedPrompt = await enhancePrompt(asset.prompt, asset.style)
 
-    // 이미지 생성
+    // 이미지 생성 (Imagen 4 모델 사용)
     const response = await ai.models.generateImages({
-      model: 'imagen-3.0-generate-002',
+      model: 'imagen-4.0-generate-001',
       prompt: enhancedPrompt,
       config: {
         numberOfImages: 1,

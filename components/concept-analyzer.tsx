@@ -2,15 +2,18 @@
 
 import { useState } from 'react'
 import {
-  Loader2, Sparkles, Brain, Trash2, Play, Pause,
-  CheckCircle2, XCircle, Clock, Plus, Download, Gamepad2
+  Loader2, Sparkles, Brain, Trash2, Play,
+  CheckCircle2, XCircle, Clock, Download, Gamepad2,
+  Globe, RefreshCw, AlertCircle
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
+import { Input } from '@/components/ui/input'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Progress } from '@/components/ui/progress'
 import { Checkbox } from '@/components/ui/checkbox'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import {
   Accordion,
   AccordionContent,
@@ -26,10 +29,21 @@ const sampleConcepts = [
   '귀여운 농장 시뮬레이션 - 캐릭터가 농작물을 키우고 동물을 돌보며 마을 사람들과 친해지는 힐링 게임',
 ]
 
+const sampleUrls = [
+  'https://www.notion.so',
+  'https://vercel.com',
+  'https://github.com',
+]
+
 export function ConceptAnalyzer() {
+  const [activeTab, setActiveTab] = useState<'concept' | 'url'>('concept')
   const [concept, setConcept] = useState('')
+  const [url, setUrl] = useState('')
   const [analysis, setAnalysis] = useState<GameConceptAnalysis | null>(null)
   const [selectedAssetIds, setSelectedAssetIds] = useState<Set<string>>(new Set())
+  const [autoGenerateAfterAnalysis, setAutoGenerateAfterAnalysis] = useState(false)
+  const [regeneratingIds, setRegeneratingIds] = useState<Set<string>>(new Set())
+  const [sourceUrl, setSourceUrl] = useState<string | null>(null)
 
   const {
     analyzedAssets,
@@ -46,12 +60,13 @@ export function ConceptAnalyzer() {
   } = useAppStore()
 
   // 게임 컨셉 분석
-  const handleAnalyze = async () => {
+  const handleAnalyzeConcept = async () => {
     if (!concept.trim() || isAnalyzing) return
 
     setIsAnalyzing(true)
     setAnalysis(null)
     clearAnalyzedAssets()
+    setSourceUrl(null)
 
     try {
       const response = await fetch('/api/analyze-concept', {
@@ -69,8 +84,12 @@ export function ConceptAnalyzer() {
       if (data.analysis) {
         setAnalysis(data.analysis)
         setAnalyzedAssets(data.analysis.assets)
-        // 모든 에셋 기본 선택
         setSelectedAssetIds(new Set(data.analysis.assets.map((a: AnalyzedAsset) => a.id)))
+
+        // 자동 생성 옵션 확인
+        if (autoGenerateAfterAnalysis) {
+          setTimeout(() => handleBatchGenerate(data.analysis.assets), 500)
+        }
       }
     } catch (error) {
       console.error('Analysis error:', error)
@@ -80,9 +99,58 @@ export function ConceptAnalyzer() {
     }
   }
 
+  // URL 분석
+  const handleAnalyzeUrl = async () => {
+    if (!url.trim() || isAnalyzing) return
+
+    // URL 유효성 검사
+    try {
+      new URL(url)
+    } catch {
+      alert('유효한 URL을 입력해주세요 (https://example.com)')
+      return
+    }
+
+    setIsAnalyzing(true)
+    setAnalysis(null)
+    clearAnalyzedAssets()
+
+    try {
+      const response = await fetch('/api/analyze-url', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url }),
+      })
+
+      const data = await response.json()
+
+      if (!response.ok) {
+        throw new Error(data.error || 'URL 분석 중 오류가 발생했습니다')
+      }
+
+      if (data.analysis) {
+        setAnalysis(data.analysis)
+        setAnalyzedAssets(data.analysis.assets)
+        setSelectedAssetIds(new Set(data.analysis.assets.map((a: AnalyzedAsset) => a.id)))
+        setSourceUrl(data.sourceUrl)
+
+        // 자동 생성 옵션 확인
+        if (autoGenerateAfterAnalysis) {
+          setTimeout(() => handleBatchGenerate(data.analysis.assets), 500)
+        }
+      }
+    } catch (error) {
+      console.error('URL Analysis error:', error)
+      alert(error instanceof Error ? error.message : 'URL 분석 중 오류가 발생했습니다')
+    } finally {
+      setIsAnalyzing(false)
+    }
+  }
+
   // 선택된 에셋 일괄 생성
-  const handleBatchGenerate = async () => {
-    const selectedAssets = analyzedAssets.filter(a =>
+  const handleBatchGenerate = async (assetsOverride?: AnalyzedAsset[]) => {
+    const assetsToUse = assetsOverride || analyzedAssets
+    const selectedAssets = assetsToUse.filter(a =>
       selectedAssetIds.has(a.id) && a.status === 'pending'
     )
 
@@ -99,14 +167,16 @@ export function ConceptAnalyzer() {
       current: selectedAssets[0]?.nameKo || ''
     })
 
-    // 순차적으로 하나씩 생성 (진행 상황 표시를 위해)
+    let completedCount = 0
+    let failedCount = 0
+
     for (let i = 0; i < selectedAssets.length; i++) {
       const asset = selectedAssets[i]
 
       setBatchProgress({
         total: selectedAssets.length,
-        completed: i,
-        failed: 0,
+        completed: completedCount,
+        failed: failedCount,
         current: asset.nameKo
       })
 
@@ -127,8 +197,8 @@ export function ConceptAnalyzer() {
             imageUrl: data.imageUrl,
             enhancedPrompt: data.enhancedPrompt
           })
+          completedCount++
 
-          // 갤러리에도 추가
           const newAsset: GeneratedAsset = {
             id: `gen-${Date.now()}-${i}`,
             prompt: asset.prompt,
@@ -140,20 +210,18 @@ export function ConceptAnalyzer() {
           addGeneratedAsset(newAsset)
         } else {
           updateAnalyzedAsset(asset.id, { status: 'failed' })
+          failedCount++
         }
       } catch {
         updateAnalyzedAsset(asset.id, { status: 'failed' })
+        failedCount++
       }
     }
 
-    const finalCompleted = analyzedAssets.filter(a =>
-      selectedAssetIds.has(a.id) && a.status === 'completed'
-    ).length
-
     setBatchProgress({
       total: selectedAssets.length,
-      completed: finalCompleted,
-      failed: selectedAssets.length - finalCompleted,
+      completed: completedCount,
+      failed: failedCount,
       current: '완료'
     })
 
@@ -162,6 +230,7 @@ export function ConceptAnalyzer() {
 
   // 개별 에셋 재생성
   const handleRegenerateAsset = async (asset: AnalyzedAsset) => {
+    setRegeneratingIds(prev => new Set(prev).add(asset.id))
     updateAnalyzedAsset(asset.id, { status: 'generating' })
 
     try {
@@ -194,7 +263,85 @@ export function ConceptAnalyzer() {
       }
     } catch {
       updateAnalyzedAsset(asset.id, { status: 'failed' })
+    } finally {
+      setRegeneratingIds(prev => {
+        const next = new Set(prev)
+        next.delete(asset.id)
+        return next
+      })
     }
+  }
+
+  // 실패한 모든 에셋 재시도
+  const handleRetryAllFailed = async () => {
+    const failedAssets = analyzedAssets.filter(a => a.status === 'failed')
+    if (failedAssets.length === 0) return
+
+    setIsBatchGenerating(true)
+    setBatchProgress({
+      total: failedAssets.length,
+      completed: 0,
+      failed: 0,
+      current: failedAssets[0]?.nameKo || ''
+    })
+
+    let completedCount = 0
+    let failedCount = 0
+
+    for (const asset of failedAssets) {
+      setBatchProgress({
+        total: failedAssets.length,
+        completed: completedCount,
+        failed: failedCount,
+        current: asset.nameKo
+      })
+
+      updateAnalyzedAsset(asset.id, { status: 'generating' })
+
+      try {
+        const response = await fetch('/api/generate-batch', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ asset }),
+        })
+
+        const data = await response.json()
+
+        if (data.success && data.imageUrl) {
+          updateAnalyzedAsset(asset.id, {
+            status: 'completed',
+            imageUrl: data.imageUrl,
+            enhancedPrompt: data.enhancedPrompt
+          })
+          completedCount++
+
+          const newAsset: GeneratedAsset = {
+            id: `gen-retry-${Date.now()}`,
+            prompt: asset.prompt,
+            style: asset.style,
+            imageUrl: data.imageUrl,
+            createdAt: new Date().toISOString(),
+            aspectRatio: asset.aspectRatio,
+          }
+          addGeneratedAsset(newAsset)
+        } else {
+          updateAnalyzedAsset(asset.id, { status: 'failed' })
+          failedCount++
+        }
+      } catch {
+        updateAnalyzedAsset(asset.id, { status: 'failed' })
+        failedCount++
+      }
+    }
+
+    setBatchProgress({
+      total: failedAssets.length,
+      completed: completedCount,
+      failed: failedCount,
+      current: '재시도 완료'
+    })
+
+    setIsBatchGenerating(false)
   }
 
   // 에셋 선택 토글
@@ -252,59 +399,142 @@ export function ConceptAnalyzer() {
     selectedAssetIds.has(a.id) && a.status === 'pending'
   ).length
 
+  const completedCount = analyzedAssets.filter(a => a.status === 'completed').length
+  const failedCount = analyzedAssets.filter(a => a.status === 'failed').length
+
   return (
     <div className="space-y-6">
-      {/* 컨셉 입력 */}
+      {/* 입력 탭 */}
       <Card className="glass-card">
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
-            <Gamepad2 className="h-5 w-5 text-primary" />
-            게임 컨셉 분석
+            <Brain className="h-5 w-5 text-primary" />
+            AI 에셋 분석
           </CardTitle>
           <CardDescription>
-            게임 컨셉을 입력하면 AI가 필요한 모든 에셋을 자동으로 분석합니다
+            게임 컨셉이나 웹사이트 URL을 입력하면 AI가 필요한 모든 에셋을 분석합니다
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          <Textarea
-            placeholder="게임의 장르, 스토리, 분위기, 주요 요소 등을 자세히 설명해주세요...&#10;&#10;예: 중세 판타지 RPG - 용과 마법사가 등장하는 턴제 전투 게임..."
-            value={concept}
-            onChange={(e) => setConcept(e.target.value)}
-            className="min-h-[120px] resize-none"
-            disabled={isAnalyzing}
-          />
+          <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as 'concept' | 'url')}>
+            <TabsList className="grid w-full grid-cols-2">
+              <TabsTrigger value="concept" className="flex items-center gap-2">
+                <Gamepad2 className="h-4 w-4" />
+                게임 컨셉
+              </TabsTrigger>
+              <TabsTrigger value="url" className="flex items-center gap-2">
+                <Globe className="h-4 w-4" />
+                웹사이트 URL
+              </TabsTrigger>
+            </TabsList>
 
-          <div className="flex flex-wrap gap-2">
-            {sampleConcepts.map((sample, idx) => (
-              <Badge
-                key={idx}
-                variant="secondary"
-                className="cursor-pointer hover:bg-primary/20 transition-colors text-xs"
-                onClick={() => setConcept(sample)}
+            <TabsContent value="concept" className="space-y-4 mt-4">
+              <Textarea
+                placeholder="게임의 장르, 스토리, 분위기, 주요 요소 등을 자세히 설명해주세요...&#10;&#10;예: 중세 판타지 RPG - 용과 마법사가 등장하는 턴제 전투 게임..."
+                value={concept}
+                onChange={(e) => setConcept(e.target.value)}
+                className="min-h-[120px] resize-none"
+                disabled={isAnalyzing}
+              />
+
+              <div className="flex flex-wrap gap-2">
+                {sampleConcepts.map((sample, idx) => (
+                  <Badge
+                    key={idx}
+                    variant="secondary"
+                    className="cursor-pointer hover:bg-primary/20 transition-colors text-xs"
+                    onClick={() => setConcept(sample)}
+                  >
+                    {sample.slice(0, 30)}...
+                  </Badge>
+                ))}
+              </div>
+
+              <div className="flex items-center gap-2">
+                <Checkbox
+                  id="auto-generate-concept"
+                  checked={autoGenerateAfterAnalysis}
+                  onCheckedChange={(checked) => setAutoGenerateAfterAnalysis(checked === true)}
+                />
+                <label htmlFor="auto-generate-concept" className="text-sm text-muted-foreground cursor-pointer">
+                  분석 후 자동으로 모든 에셋 생성
+                </label>
+              </div>
+
+              <Button
+                onClick={handleAnalyzeConcept}
+                disabled={!concept.trim() || isAnalyzing}
+                className="w-full h-12"
+                variant="gradient"
               >
-                {sample.slice(0, 30)}...
-              </Badge>
-            ))}
-          </div>
+                {isAnalyzing ? (
+                  <>
+                    <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+                    AI가 분석 중...
+                  </>
+                ) : (
+                  <>
+                    <Brain className="mr-2 h-5 w-5" />
+                    컨셉 분석하기
+                  </>
+                )}
+              </Button>
+            </TabsContent>
 
-          <Button
-            onClick={handleAnalyze}
-            disabled={!concept.trim() || isAnalyzing}
-            className="w-full h-12"
-            variant="gradient"
-          >
-            {isAnalyzing ? (
-              <>
-                <Loader2 className="mr-2 h-5 w-5 animate-spin" />
-                AI가 분석 중...
-              </>
-            ) : (
-              <>
-                <Brain className="mr-2 h-5 w-5" />
-                컨셉 분석하기
-              </>
-            )}
-          </Button>
+            <TabsContent value="url" className="space-y-4 mt-4">
+              <Input
+                type="url"
+                placeholder="https://example.com"
+                value={url}
+                onChange={(e) => setUrl(e.target.value)}
+                className="h-12"
+                disabled={isAnalyzing}
+              />
+
+              <div className="flex flex-wrap gap-2">
+                {sampleUrls.map((sample, idx) => (
+                  <Badge
+                    key={idx}
+                    variant="secondary"
+                    className="cursor-pointer hover:bg-primary/20 transition-colors text-xs"
+                    onClick={() => setUrl(sample)}
+                  >
+                    {sample}
+                  </Badge>
+                ))}
+              </div>
+
+              <div className="flex items-center gap-2">
+                <Checkbox
+                  id="auto-generate-url"
+                  checked={autoGenerateAfterAnalysis}
+                  onCheckedChange={(checked) => setAutoGenerateAfterAnalysis(checked === true)}
+                />
+                <label htmlFor="auto-generate-url" className="text-sm text-muted-foreground cursor-pointer">
+                  분석 후 자동으로 모든 에셋 생성
+                </label>
+              </div>
+
+              <Button
+                onClick={handleAnalyzeUrl}
+                disabled={!url.trim() || isAnalyzing}
+                className="w-full h-12"
+                variant="gradient"
+              >
+                {isAnalyzing ? (
+                  <>
+                    <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+                    웹사이트 분석 중...
+                  </>
+                ) : (
+                  <>
+                    <Globe className="mr-2 h-5 w-5" />
+                    URL 분석하기
+                  </>
+                )}
+              </Button>
+            </TabsContent>
+          </Tabs>
         </CardContent>
       </Card>
 
@@ -320,6 +550,11 @@ export function ConceptAnalyzer() {
                 </CardTitle>
                 <CardDescription className="mt-1">
                   {analysis.genre} · {analysis.artStyle} · {analysis.totalCount}개 에셋
+                  {sourceUrl && (
+                    <span className="block text-xs mt-1">
+                      출처: <a href={sourceUrl} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">{sourceUrl}</a>
+                    </span>
+                  )}
                 </CardDescription>
               </div>
               <div className="flex gap-2">
@@ -333,7 +568,11 @@ export function ConceptAnalyzer() {
                 <Button
                   variant="ghost"
                   size="sm"
-                  onClick={clearAnalyzedAssets}
+                  onClick={() => {
+                    clearAnalyzedAssets()
+                    setAnalysis(null)
+                    setSourceUrl(null)
+                  }}
                   className="text-destructive hover:text-destructive"
                 >
                   <Trash2 className="h-4 w-4" />
@@ -342,8 +581,28 @@ export function ConceptAnalyzer() {
             </div>
           </CardHeader>
           <CardContent className="space-y-4">
+            {/* 진행 상황 요약 */}
+            {(completedCount > 0 || failedCount > 0) && (
+              <div className="flex items-center gap-4 p-3 rounded-lg bg-muted/50 text-sm">
+                <div className="flex items-center gap-1">
+                  <CheckCircle2 className="h-4 w-4 text-green-500" />
+                  <span>{completedCount}개 완료</span>
+                </div>
+                {failedCount > 0 && (
+                  <div className="flex items-center gap-1">
+                    <XCircle className="h-4 w-4 text-red-500" />
+                    <span>{failedCount}개 실패</span>
+                  </div>
+                )}
+                <div className="flex items-center gap-1">
+                  <Clock className="h-4 w-4 text-muted-foreground" />
+                  <span>{pendingCount}개 대기</span>
+                </div>
+              </div>
+            )}
+
             {/* 일괄 생성 진행 상황 */}
-            {batchProgress && (
+            {batchProgress && isBatchGenerating && (
               <div className="p-4 rounded-lg bg-muted/50 space-y-2">
                 <div className="flex items-center justify-between text-sm">
                   <span>생성 진행 중: {batchProgress.current}</span>
@@ -384,7 +643,7 @@ export function ConceptAnalyzer() {
                             <Checkbox
                               checked={selectedAssetIds.has(asset.id)}
                               onCheckedChange={() => toggleAssetSelection(asset.id)}
-                              disabled={asset.status === 'generating'}
+                              disabled={asset.status === 'generating' || regeneratingIds.has(asset.id)}
                             />
 
                             {asset.imageUrl ? (
@@ -412,29 +671,62 @@ export function ConceptAnalyzer() {
                             </div>
 
                             <div className="flex items-center gap-1">
+                              {/* 완료된 에셋: 다운로드 + 재생성 버튼 */}
                               {asset.status === 'completed' && asset.imageUrl && (
-                                <Button
-                                  size="sm"
-                                  variant="ghost"
-                                  onClick={() => {
-                                    const link = document.createElement('a')
-                                    link.href = `data:image/png;base64,${asset.imageUrl}`
-                                    link.download = `${asset.name}.png`
-                                    link.click()
-                                  }}
-                                >
-                                  <Download className="h-4 w-4" />
-                                </Button>
+                                <>
+                                  <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    onClick={() => {
+                                      const link = document.createElement('a')
+                                      link.href = `data:image/png;base64,${asset.imageUrl}`
+                                      link.download = `${asset.name}.png`
+                                      link.click()
+                                    }}
+                                    title="다운로드"
+                                  >
+                                    <Download className="h-4 w-4" />
+                                  </Button>
+                                  <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    onClick={() => handleRegenerateAsset(asset)}
+                                    disabled={isBatchGenerating || regeneratingIds.has(asset.id)}
+                                    title="재생성"
+                                    className="text-orange-500 hover:text-orange-600"
+                                  >
+                                    {regeneratingIds.has(asset.id) ? (
+                                      <Loader2 className="h-4 w-4 animate-spin" />
+                                    ) : (
+                                      <RefreshCw className="h-4 w-4" />
+                                    )}
+                                  </Button>
+                                </>
                               )}
+
+                              {/* 대기/실패 에셋: 생성 버튼 */}
                               {(asset.status === 'pending' || asset.status === 'failed') && (
                                 <Button
                                   size="sm"
                                   variant="ghost"
                                   onClick={() => handleRegenerateAsset(asset)}
-                                  disabled={isBatchGenerating}
+                                  disabled={isBatchGenerating || regeneratingIds.has(asset.id)}
+                                  title={asset.status === 'failed' ? '재시도' : '생성'}
+                                  className={asset.status === 'failed' ? 'text-red-500 hover:text-red-600' : ''}
                                 >
-                                  <Play className="h-4 w-4" />
+                                  {regeneratingIds.has(asset.id) ? (
+                                    <Loader2 className="h-4 w-4 animate-spin" />
+                                  ) : asset.status === 'failed' ? (
+                                    <RefreshCw className="h-4 w-4" />
+                                  ) : (
+                                    <Play className="h-4 w-4" />
+                                  )}
                                 </Button>
+                              )}
+
+                              {/* 생성 중 표시 */}
+                              {asset.status === 'generating' && !regeneratingIds.has(asset.id) && (
+                                <Loader2 className="h-4 w-4 text-primary animate-spin" />
                               )}
                             </div>
                           </div>
@@ -446,12 +738,12 @@ export function ConceptAnalyzer() {
               })}
             </Accordion>
 
-            {/* 일괄 생성 버튼 */}
-            <div className="flex gap-2">
+            {/* 액션 버튼들 */}
+            <div className="flex gap-2 flex-wrap">
               <Button
-                onClick={handleBatchGenerate}
+                onClick={() => handleBatchGenerate()}
                 disabled={pendingCount === 0 || isBatchGenerating}
-                className="flex-1 h-12"
+                className="flex-1 h-12 min-w-[200px]"
                 variant="gradient"
               >
                 {isBatchGenerating ? (
@@ -466,6 +758,18 @@ export function ConceptAnalyzer() {
                   </>
                 )}
               </Button>
+
+              {failedCount > 0 && (
+                <Button
+                  onClick={handleRetryAllFailed}
+                  disabled={isBatchGenerating}
+                  variant="outline"
+                  className="h-12"
+                >
+                  <AlertCircle className="mr-2 h-4 w-4 text-red-500" />
+                  실패 {failedCount}개 재시도
+                </Button>
+              )}
             </div>
           </CardContent>
         </Card>
