@@ -74,9 +74,9 @@ export async function POST(request: NextRequest) {
     console.log('Original prompt:', prompt)
     console.log('Enhanced prompt:', enhancedPrompt)
 
-    // Imagen 3 모델로 이미지 생성
+    // Imagen 4 모델로 이미지 생성 (imagen-3.0은 2025.11.10 deprecated)
     const response = await ai.models.generateImages({
-      model: 'imagen-3.0-generate-002',
+      model: 'imagen-4.0-generate-001',
       prompt: enhancedPrompt,
       config: {
         numberOfImages: Math.min(numberOfImages, 4),
@@ -125,8 +125,8 @@ export async function POST(request: NextRequest) {
 export async function GET() {
   return NextResponse.json({
     message: 'ISW Game Asset Generator API',
-    version: '2.0.0',
-    model: 'imagen-3.0-generate-002',
+    version: '2.1.0',
+    model: 'imagen-4.0-generate-001',
     features: ['AI prompt enhancement', '18 game asset styles']
   })
 }
