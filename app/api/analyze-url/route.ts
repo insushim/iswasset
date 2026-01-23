@@ -5,7 +5,7 @@ import type { AnalyzedAsset, GameConceptAnalysis, AssetStyleId, AspectRatio } fr
 const ai = new GoogleGenAI({ apiKey: process.env.GOOGLE_API_KEY || '' })
 
 // URL에서 웹사이트 콘텐츠 가져오기
-async function fetchWebsiteContent(url: string): Promise<string> {
+async function fetchWebsiteContent(url: string): Promise<{ content: string; isSPA: boolean; metadata: Record<string, string> }> {
   try {
     const response = await fetch(url, {
       headers: {
@@ -22,7 +22,30 @@ async function fetchWebsiteContent(url: string): Promise<string> {
 
     const html = await response.text()
 
-    // HTML에서 텍스트 추출 (간단한 방식)
+    // 메타데이터 추출
+    const metadata: Record<string, string> = {}
+    const titleMatch = html.match(/<title[^>]*>([^<]+)<\/title>/i)
+    if (titleMatch) metadata.title = titleMatch[1].trim()
+
+    const descMatch = html.match(/<meta[^>]*name=["']description["'][^>]*content=["']([^"']+)["']/i)
+    if (descMatch) metadata.description = descMatch[1].trim()
+
+    const ogTitleMatch = html.match(/<meta[^>]*property=["']og:title["'][^>]*content=["']([^"']+)["']/i)
+    if (ogTitleMatch) metadata.ogTitle = ogTitleMatch[1].trim()
+
+    const ogDescMatch = html.match(/<meta[^>]*property=["']og:description["'][^>]*content=["']([^"']+)["']/i)
+    if (ogDescMatch) metadata.ogDescription = ogDescMatch[1].trim()
+
+    // SPA 감지 (React, Vue, Angular 등)
+    const isSPA = html.includes('__NEXT_DATA__') ||
+                  html.includes('__NUXT__') ||
+                  html.includes('ng-app') ||
+                  html.includes('data-reactroot') ||
+                  html.includes('id="root"') ||
+                  html.includes('id="app"') ||
+                  (html.match(/<script/gi)?.length || 0) > 5
+
+    // HTML에서 텍스트 추출
     const textContent = html
       .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '') // 스크립트 제거
       .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '') // 스타일 제거
@@ -31,7 +54,7 @@ async function fetchWebsiteContent(url: string): Promise<string> {
       .trim()
       .slice(0, 8000) // 최대 8000자
 
-    return textContent
+    return { content: textContent, isSPA, metadata }
   } catch (error) {
     console.error('Website fetch error:', error)
     throw new Error(`웹사이트를 불러올 수 없습니다: ${error instanceof Error ? error.message : '알 수 없는 오류'}`)
@@ -69,13 +92,41 @@ export async function POST(request: NextRequest) {
     }
 
     // 웹사이트 콘텐츠 가져오기
-    const websiteContent = await fetchWebsiteContent(url)
+    const { content: websiteContent, isSPA, metadata } = await fetchWebsiteContent(url)
 
-    if (websiteContent.length < 50) {
-      return NextResponse.json({
-        success: false,
-        error: '웹사이트에서 충분한 콘텐츠를 추출할 수 없습니다'
-      }, { status: 400 })
+    // URL에서 정보 추출
+    const urlObj = new URL(url)
+    const pathParts = urlObj.pathname.split('/').filter(Boolean)
+    const urlInfo = `Domain: ${urlObj.hostname}, Path: ${urlObj.pathname}, Path segments: ${pathParts.join(', ')}`
+
+    // SPA나 콘텐츠가 부족한 경우 URL과 메타데이터 기반으로 분석
+    let contentForAnalysis = websiteContent
+    if (websiteContent.length < 50 || isSPA) {
+      // 메타데이터와 URL 정보 조합
+      const metaInfo = Object.entries(metadata)
+        .map(([key, value]) => `${key}: ${value}`)
+        .join('\n')
+
+      contentForAnalysis = `
+URL Information:
+${urlInfo}
+
+Metadata:
+${metaInfo || 'No metadata available'}
+
+Detected as: ${isSPA ? 'Single Page Application (SPA/JavaScript-rendered site)' : 'Static website'}
+
+Available text content:
+${websiteContent || 'Minimal content (JavaScript-rendered)'}
+      `.trim()
+
+      // 여전히 정보가 없으면 에러
+      if (!metadata.title && !metadata.ogTitle && pathParts.length === 0 && websiteContent.length < 20) {
+        return NextResponse.json({
+          success: false,
+          error: '웹사이트에서 충분한 정보를 추출할 수 없습니다. URL을 확인하거나 다른 페이지를 시도해주세요.'
+        }, { status: 400 })
+      }
     }
 
     const systemInstruction = `You are an expert game designer and visual asset consultant. Analyze the given website content and determine what visual assets would be needed if this website/service were to have game-like elements, illustrations, or enhanced visual design.
@@ -129,7 +180,7 @@ Be creative and practical. Focus on assets that would genuinely improve the webs
 
     const response = await ai.models.generateContent({
       model: 'gemini-2.0-flash',
-      contents: `Analyze this website and create a list of visual assets it would benefit from:\n\nURL: ${url}\n\nWebsite Content:\n${websiteContent}`,
+      contents: `Analyze this website and create a list of visual assets it would benefit from:\n\nURL: ${url}\n\nWebsite Content:\n${contentForAnalysis}`,
       config: {
         systemInstruction,
         temperature: 0.8,
